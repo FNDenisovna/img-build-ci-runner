@@ -1,14 +1,16 @@
 package storage
 
 import (
-	"altpack-vers-checker/internal/storage/sqllite"
+	model "img-build-ci-runner/internal/model"
+	"img-build-ci-runner/internal/storage/sqllite"
 	"testing"
 	"time"
 )
 
 func TestGetPackages(t *testing.T) {
 	type args struct {
-		offset int
+		branch string
+		limit  int
 	}
 	tests := []struct {
 		name    string
@@ -16,13 +18,17 @@ func TestGetPackages(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "Ok1",
-			args:    args{offset: 5},
+			name: "Ok1",
+			args: args{
+				branch: "sisyphus", limit: 5,
+			},
 			wantErr: false,
 		},
 		{
-			name:    "Ok2",
-			args:    args{offset: 1},
+			name: "Ok2",
+			args: args{
+				branch: "sisyphus", limit: 1,
+			},
 			wantErr: false,
 		},
 	}
@@ -36,7 +42,12 @@ func TestGetPackages(t *testing.T) {
 
 			c := New(db)
 			defer c.Close()
-			_, err = c.GetPackages(tt.args.offset)
+			packs, err := c.GetPackages(tt.args.branch, tt.args.limit)
+
+			if len(packs) > tt.args.limit {
+				t.Errorf("GetPackages() return %v packs, limit was %v", len(packs), tt.args.limit)
+				return
+			}
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetPackages() return error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -51,6 +62,7 @@ func TestGetPackage(t *testing.T) {
 		release string
 		version string
 		changed time.Time
+		branch  string
 	}
 	tests := []struct {
 		name    string
@@ -58,8 +70,13 @@ func TestGetPackage(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "Ok1",
-			args:    args{name: "test"},
+			name: "Ok1",
+			args: args{
+				name:    "test",
+				version: "1.0.0",
+				release: "alt1",
+				branch:  "sisyphus",
+			},
 			wantErr: false,
 		},
 	}
@@ -74,10 +91,11 @@ func TestGetPackage(t *testing.T) {
 			c := New(db)
 			defer c.Close()
 
-			pack := &SqlPack{
+			pack := &model.SqlPack{
 				Name:    tt.args.name,
 				Version: tt.args.version,
 				Release: tt.args.release,
+				Branch:  tt.args.branch,
 				Changed: time.Now(),
 			}
 			id_res, err := c.InsertPackage(pack)
@@ -86,13 +104,18 @@ func TestGetPackage(t *testing.T) {
 				return
 			}
 
-			pack_res, err := c.GetPackage(pack.Name)
+			pack_res, err := c.GetPackage(pack.Name, tt.args.branch)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetPackages() return error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if id_res != pack_res.Id {
 				t.Errorf("InsertPackage() and GetPackages() return different results")
+				return
+			}
+
+			if err := c.DeletePackageById(pack_res.Id); err != nil {
+				t.Errorf("DeletePackageById() can't delete info by id %v from GetPackages(). Error: %v", pack_res.Id, err)
 				return
 			}
 		})
@@ -105,6 +128,7 @@ func TestInsertPackage(t *testing.T) {
 		release string
 		version string
 		changed time.Time
+		branch  string
 	}
 	tests := []struct {
 		name    string
@@ -117,6 +141,7 @@ func TestInsertPackage(t *testing.T) {
 				name:    "test",
 				release: "alt1",
 				version: "1.0.0",
+				branch:  "sisyphus",
 			},
 			wantErr: false,
 		},
@@ -131,10 +156,11 @@ func TestInsertPackage(t *testing.T) {
 
 			c := New(db)
 			defer c.Close()
-			pack := &SqlPack{
+			pack := &model.SqlPack{
 				Name:    tt.args.name,
 				Version: tt.args.version,
 				Release: tt.args.release,
+				Branch:  tt.args.branch,
 				Changed: time.Now(),
 			}
 			_, err = c.InsertPackage(pack)
@@ -143,7 +169,75 @@ func TestInsertPackage(t *testing.T) {
 				return
 			}
 
-			if id, err := c.packExists(tt.args.name); err == nil && id > 0 {
+			if id, err := c.packExists(tt.args.name, tt.args.branch); err == nil && id > 0 {
+				err = c.DeletePackageById(id)
+				if err != nil {
+					t.Errorf("Deleting package error: %v, wantErr %v", err, tt.wantErr)
+					return
+				}
+			} else {
+				t.Errorf("Can't find package in db after inserting: %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+		})
+	}
+}
+
+func TestUpdatePackage(t *testing.T) {
+	type args struct {
+		name    string
+		release string
+		version string
+		changed time.Time
+		branch  string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "Ok1",
+			args: args{
+				name:    "test",
+				release: "alt1",
+				version: "1.0.0",
+				branch:  "sisyphus",
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := sqllite.New()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("sqllite.New return error during creating db: %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			c := New(db)
+			defer c.Close()
+			pack := &model.SqlPack{
+				Name:    tt.args.name,
+				Version: tt.args.version,
+				Release: tt.args.release,
+				Branch:  tt.args.branch,
+				Changed: time.Now(),
+			}
+			_, err = c.InsertPackage(pack)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("InsertPackage() return error: %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if id, err := c.packExists(tt.args.name, tt.args.branch); err == nil && id > 0 {
+				pack.Version = "2.0.0"
+				id, err = c.UpdatePackage(pack, id)
+				if err != nil {
+					t.Errorf("Updating package error: %v, wantErr %v", err, tt.wantErr)
+					return
+				}
+
 				err = c.DeletePackageById(id)
 				if err != nil {
 					t.Errorf("Deleting package error: %v, wantErr %v", err, tt.wantErr)

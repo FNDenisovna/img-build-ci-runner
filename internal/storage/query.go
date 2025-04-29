@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	model "altpack-vers-checker/internal/integration/model"
+	model "img-build-ci-runner/internal/model"
 )
 
 type Storage struct {
@@ -35,9 +35,9 @@ func (c *Storage) GetPackage(name, branch string) (*model.SqlPack, error) {
 func (c *Storage) GetPackages(branch string, limit int) ([]model.SqlPack, error) {
 	limitq := ""
 	if limit > 0 {
-		limitq = fmt.Sprintf(" LIMIT %s", limit)
+		limitq = fmt.Sprintf(" LIMIT %v", limit)
 	}
-	rows, err := c.db.Query(fmt.Sprintf("SELECT * FROM packages where branch='%s' ORDER BY id DESC%s", branch, limitq))
+	rows, err := c.db.Query(fmt.Sprintf("SELECT id, name, version, release, epoch, changed, branch FROM packages where branch='%s' ORDER BY id DESC%s", branch, limitq))
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (c *Storage) InsertPackage(pack *model.SqlPack) (int, error) {
 	}
 
 	res, err := c.db.Exec(`INSERT INTO packages
-		(name, version, release, epoch, changed, branch) 
+		(name, version, release, epoch, changed, branch)
 		VALUES (?,?,?,?,?,?);`,
 		&pack.Name, &pack.Version, &pack.Release, &pack.Epoch, &pack.Changed, pack.Branch)
 	if err != nil {
@@ -85,6 +85,16 @@ func (c *Storage) InsertPackage(pack *model.SqlPack) (int, error) {
 	if id, err = res.LastInsertId(); err != nil {
 		return 0, err
 	}
+	return int(id), nil
+}
+
+func (c *Storage) UpdatePackage(pack *model.SqlPack, id int) (int, error) {
+	_, err := c.db.Exec(fmt.Sprintf("UPDATE packages SET version=$1, release=$2, changed=$3 WHERE id = %v;", id),
+		&pack.Version, &pack.Release, &pack.Changed)
+	if err != nil {
+		return 0, err
+	}
+
 	return int(id), nil
 }
 
@@ -99,7 +109,7 @@ func (c *Storage) DeletePackageById(id int) error {
 }
 
 func (c *Storage) DeletePackageByName(name, branch string) error {
-	_, err := c.db.Exec(fmt.Sprint("DELETE FROM packages WHERE name='%s' and branch='%s';", name, branch))
+	_, err := c.db.Exec(fmt.Sprintf("DELETE FROM packages WHERE name='%s' and branch='%s';", name, branch))
 
 	if err != nil {
 		return err

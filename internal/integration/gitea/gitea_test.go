@@ -1,13 +1,13 @@
 package gitea
 
 import (
-	model "altpack-vers-checker/internal/model"
+	model "img-build-ci-runner/internal/model"
 	"testing"
 )
 
 // /test for
-// /func (g *GiteaApi) CreateTag(tag *model.GiteaTag, token string) error
-func TestGitea_CreateTag(t *testing.T) {
+// /func (g *GiteaApi) RunBuildImage(tag *model.GiteaTag, token string) error
+func TestGitea_RunBuildImage(t *testing.T) {
 	type args struct {
 		branch  string
 		version string
@@ -41,7 +41,7 @@ func TestGitea_CreateTag(t *testing.T) {
 				Branch:  tt.args.branch,
 			}
 			token := "..."
-			err := a.CreateTag(tag, token)
+			err := a.RunBuildImage(tag, token)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("CreateTag() return error = %v, wantErr %v", err, tt.wantErr)
 				return

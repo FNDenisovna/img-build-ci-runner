@@ -1,11 +1,11 @@
 package altapi
 
 import (
-	"altpack-vers-checker/internal/api"
 	"encoding/json"
 	"fmt"
+	"img-build-ci-runner/internal/api"
 
-	model "altpack-vers-checker/internal/integration/model"
+	model "img-build-ci-runner/internal/model"
 )
 
 type AltApi struct {
@@ -20,6 +20,10 @@ func New(url string) *AltApi {
 		a.url = "https://rdb.altlinux.org/api/"
 	}
 	return a
+}
+
+func (a *AltApi) Update(url string) {
+	a.url = url
 }
 
 func (a *AltApi) GetSitePackInfo(name, branch string) (packinfo model.SiteVersion, err error) {
@@ -39,12 +43,12 @@ func (a *AltApi) GetSitePackInfo(name, branch string) (packinfo model.SiteVersio
 	var resp SitePackInfo
 	err = json.Unmarshal(row, &resp)
 	if err != nil {
-		err = fmt.Errorf("Unmarshal response is failed. Error: %w", err)
+		err = fmt.Errorf("Unmarshal response is failed. Error: %w\n", err)
 		return
 	}
 
 	if resp.Message != "" {
-		err = fmt.Errorf("No found package %v on branch %v. Error message: %w", name, branch, err)
+		err = fmt.Errorf("No found package %v on branch %v. Error message: %s\n", name, branch, resp.Message)
 		return
 	}
 
@@ -53,7 +57,7 @@ func (a *AltApi) GetSitePackInfo(name, branch string) (packinfo model.SiteVersio
 		return
 	}
 
-	err = fmt.Errorf("Something wrong. No found package %v on branch %v", name, branch)
+	err = fmt.Errorf("Something wrong. No found package %v on branch %v\n", name, branch)
 	return
 }
 
@@ -63,12 +67,12 @@ type SitePackInfo struct {
 	Message  string              `json:"message"`
 }
 
-func (a *AltApi) GetPackInfo(name, branch string) (pack Pack, err error) {
-	endpoint := fmt.Sprint(a.url, "package/package_info")
-	params := make(map[string]string, 2)
+func (a *AltApi) GetPackInfo(name, branch string) (packinfo model.SiteVersion, err error) {
+	endpoint := fmt.Sprint(a.url, "site/package_versions")
+	params := make(map[string]string, 3)
 	params["name"] = name
-	params["branch"] = branch
-	//params["arch"] = "x86_64"
+	params["arch"] = "x86_64"
+	params["package_type"] = "source"
 
 	req := api.New(endpoint)
 	req.Params = params
@@ -81,27 +85,29 @@ func (a *AltApi) GetPackInfo(name, branch string) (pack Pack, err error) {
 	var resp PackInfo
 	err = json.Unmarshal(row, &resp)
 	if err != nil {
-		err = fmt.Errorf("Unmarshal response is failed. Error: %w", err)
+		err = fmt.Errorf("Unmarshal response is failed. Error: %w\n", err)
 		return
 	}
 
-	if resp.Length > 0 {
-		pack = resp.Packages[0]
+	if resp.Message != "" {
+		err = fmt.Errorf("No found package %v on branch %v. Error message: %s\n", name, branch, resp.Message)
 		return
 	}
 
-	err = fmt.Errorf("No found package %v on branch %v", name, branch)
+	if resp.Versions != nil && len(resp.Versions) > 0 {
+		for _, ver := range resp.Versions {
+			if ver.Branch == branch {
+				packinfo = ver
+				return
+			}
+		}
+	}
+
+	err = fmt.Errorf("No found package %v on branch %v\n", name, branch)
 	return
 }
 
 type PackInfo struct {
-	Length   int    `json:"length"`
-	Packages []Pack `json:"packages"`
-}
-
-type Pack struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-	Release string `json:"release"`
-	Epoch   string `json:"epoch"`
+	Versions []model.SiteVersion `json:"versions"`
+	Message  string              `json:"message"`
 }

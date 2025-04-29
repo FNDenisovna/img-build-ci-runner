@@ -25,7 +25,7 @@ func New(url string) *Request {
 
 func (req *Request) Get() ([]byte, error) {
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 15 * time.Second,
 	}
 
 	url := req.Url
@@ -36,17 +36,18 @@ func (req *Request) Get() ([]byte, error) {
 		}
 		url = strings.TrimSuffix(url, "&")
 	}
+
 	fmt.Printf("Total url: %v\n", url)
 
 	r, err := client.Get(url)
 	if err != nil {
-		err = fmt.Errorf("Request to url (%s) is failed. Error: %w", url, err)
+		err = fmt.Errorf("Request to url (%s) is failed. Error: %w\n", url, err)
 		return nil, err
 	}
 	defer r.Body.Close()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		err = fmt.Errorf("Reading of response is failed. Error: %w", err)
+		err = fmt.Errorf("Reading of response is failed. Error: %w\n", err)
 		return nil, err
 	}
 

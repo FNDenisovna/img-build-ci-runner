@@ -3,22 +3,21 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
+	"log"
 	"os"
 	"path/filepath"
 
-	model "altpack-vers-checker/internal/integration/model"
+	"img-build-ci-runner/configs"
 
 	"github.com/kirsle/configdir"
 )
 
-const appname = "altpack-vers-checker"
-const imgPkgFilePath = "/var/lib/altpack-vers-checker/image_list.json"
+const appname = "img-build-ci-runner"
+const cfgExample = "./configs/cfg_example.json"
 
 type Config struct {
 	path     string
-	settings *model.AppSettings
+	settings *AppSettings
 }
 
 func New() *Config {
@@ -29,23 +28,30 @@ func New() *Config {
 	}
 
 	configFile := filepath.Join(configPath, "config.json")
-
-	var settings model.AppSettings
+	log.Printf("Config path: %s\n", configFile)
+	var settings AppSettings
 
 	if _, err = os.Stat(configFile); os.IsNotExist(err) {
-		// Create the new config file.
+		// Create the new config file
+		// Write exaple into it
 		fh, err := os.Create(configFile)
 		if err != nil {
+			log.Fatal(fmt.Sprintf("Can't create default config file. Path %s. Error: %v\n", configFile, err))
 			panic(err)
 		}
 		defer fh.Close()
 
-		encoder := json.NewEncoder(fh)
-		encoder.Encode(&settings)
+		if _, err = fh.WriteString(configs.Cfg_example); err != nil {
+			log.Fatal(fmt.Sprintf("Can't write default configuration to config file. Path %s; Conf-on: %s. Error: %v\n", configFile, configs.Cfg_example, err))
+			panic(err)
+		}
+
+		json.Unmarshal([]byte(configs.Cfg_example), &settings)
 	} else {
 		// Load the existing file.
 		fh, err := os.Open(configFile)
 		if err != nil {
+			log.Fatal(fmt.Sprintf("Can't open config file. Path %s. Error: %v\n", configFile, err))
 			panic(err)
 		}
 		defer fh.Close()
@@ -59,10 +65,10 @@ func New() *Config {
 	}
 }
 
-func (cfg *Config) UpdateCfgSettings() error {
+func (cfg *Config) UpdateSettings() error {
 	fh, err := os.Open(cfg.path)
 	if err != nil {
-		return nil, fmt.Errorf("Can't read config file %s and get settings. Error: %w", cfg.path, err)
+		return fmt.Errorf("Can't read config file %s and get settings. Error: %w\n", cfg.path, err)
 	}
 	defer fh.Close()
 
@@ -71,47 +77,37 @@ func (cfg *Config) UpdateCfgSettings() error {
 	return nil
 }
 
+func (cfg *Config) GetSettings(name string) string {
+	switch name {
+	case "AltSiteUrl":
+		return cfg.settings.AltSiteUrl
+	case "GiteaWfUrl":
+		return cfg.settings.GiteaWfUrl
+	case "GiteaRepoUrl":
+		return cfg.settings.GiteaRepoUrl
+	case "DepsCronGroupExp":
+		return cfg.settings.DepsCronGroupExp
+	case "VersCronGroupExp":
+		return cfg.settings.VersCronGroupExp
+	case "VersCheckImgGroup":
+		return cfg.settings.VersCheckImgGroup
+	case "DepsCronImgGroup":
+		return cfg.settings.DepsCronImgGroup
+	case "GiteaToken":
+		return cfg.settings.GiteaToken
+	default:
+		err := fmt.Errorf("Setting %s is not in settings list. Check your code and settings list in config %s\n", name, cfg.path)
+		log.Fatal(err)
+		return ""
+	}
+}
+
 func (cfg *Config) GetBranches() []string {
+	if len(cfg.settings.Branches) <= 0 {
+		err := fmt.Errorf("Setting Branches from config is empty. Set value to %s\n", cfg.path)
+		log.Fatal(err)
+		return nil
+	}
+
 	return cfg.settings.Branches
-}
-
-func (cfg *Config) GetImgPkgList() ([]model.ImgPkg, error) {
-	if err := downloadFile(cfg.settings.ImgPkgFileUrl, imgPkgFilePath); err != nil {
-		return nil, fmt.Errorf("Can't get file from %s with image-package list. Error: %w", cfg.settings.ImgPkgFileUrl, err)
-	}
-
-	imgPkgFile, err := os.Open(imgPkgFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("Can't open file with image-package list for checking version: %s. Error: %w", imgPkgFilePath, err)
-	}
-	defer imgPkgFile.Close()
-
-	var res []model.ImgPkg
-	decoder := json.NewDecoder(imgPkgFile)
-	decoder.Decode(&res)
-	return res, nil
-}
-
-func downloadFile(url, destPath string) error {
-	// Create the file
-	out, err := os.Create(destPath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	// Get the data
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	// Write the body to file
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }

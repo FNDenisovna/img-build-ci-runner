@@ -2,17 +2,10 @@ package model
 
 import "time"
 
-type AppSettings struct {
-	ImgPkgFileUrl string   `json:"img_pkg_url"`
-	Branches      []string `json:"branches"`
-	CronExp       string   `json:"cronexp"`
-	AltSiteUrl    string   `json:"alt_site_url"`
-	GiteaUrl      string   `json:"gitea_url"`
-}
-
 type ImgPkg struct {
-	Package string `json:"package"`
-	Image   string `json:"image"`
+	// key Image string `json:"image"`
+	// value Packages list string `json:"package"`
+	MapImgPkg map[string][]string
 }
 
 // Model of info package from local service db
@@ -31,8 +24,8 @@ type SiteVersion struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	Release string `json:"release"`
-	//"2024-09-16T16:22:17"
-	Changed time.Time `json:"changed"`
+	Changed string `json:"changed"`
+	Branch  string `json:"branch"`
 }
 
 type GiteaTag struct {
@@ -42,4 +35,5 @@ type GiteaTag struct {
 	Image   string
 	Version string
 	Branch  string
+	Org     string
 }

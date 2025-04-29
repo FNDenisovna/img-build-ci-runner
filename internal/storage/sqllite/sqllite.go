@@ -6,7 +6,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const dbpath = "/var/lib/altpack-vers-checker/packages.db"
+const dbpath = "/var/lib/img-build-ci-runner/packages.db"
 
 const create string = `
   CREATE TABLE IF NOT EXISTS packages (

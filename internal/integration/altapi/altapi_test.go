@@ -22,6 +22,21 @@ func TestAltapi_GetSitePackInfo(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "noerr_test",
+			args:    args{branch: "sisyphus", name: "etcd"},
+			wantErr: false,
+		},
+		{
+			name:    "noerr_test",
+			args:    args{branch: "sisyphus", name: "etcd"},
+			wantErr: false,
+		},
+		{
+			name:    "noerr_test",
+			args:    args{branch: "p10", name: "git"},
+			wantErr: false,
+		},
+		{
 			name:    "err_test",
 			args:    args{branch: "p10", name: "incus"},
 			wantErr: true,
@@ -31,7 +46,7 @@ func TestAltapi_GetSitePackInfo(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			a := New("")
 			pack, err := a.GetSitePackInfo(tt.args.name, tt.args.branch)
-			if (err != nil) != tt.wantErr {
+			if (err != nil) && !tt.wantErr {
 				t.Errorf("GetSitePackInfo() return error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}

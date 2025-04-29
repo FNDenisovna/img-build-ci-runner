@@ -41,7 +41,3 @@ func New() *sql.DB {
 
 	return db
 }
-
-func (db *sql.DB) Close() {
-	defer db.Close()
-}

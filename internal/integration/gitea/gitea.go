@@ -1,10 +1,10 @@
 package gitea
 
 import (
-	"altpack-vers-checker/internal/api"
-	model "altpack-vers-checker/internal/model"
 	"encoding/json"
 	"fmt"
+	"img-build-ci-runner/internal/api"
+	model "img-build-ci-runner/internal/model"
 	"log"
 )
 
@@ -22,6 +22,10 @@ func New(url string) *GiteaApi {
 	return a
 }
 
+func (g *GiteaApi) Update(url string) {
+	g.url = url
+}
+
 /*
 	curl -X 'POST' \
 	  'https://gitea.basealt.ru/api/v1/repos/alt/image-forge/tags' \
@@ -35,7 +39,7 @@ func New(url string) *GiteaApi {
 	}'
 */
 /// target - git branch for creating tag
-func (g *GiteaApi) CreateTag(tag *model.GiteaTag, token string) error {
+func (g *GiteaApi) RunBuildImage(tag *model.GiteaTag, token string) error {
 	endpoint := fmt.Sprint(g.url, "api/v1/repos/alt/image-forge/tags")
 	headers := make(map[string]string, 3)
 	headers["accept"] = "application/json"
@@ -48,13 +52,13 @@ func (g *GiteaApi) CreateTag(tag *model.GiteaTag, token string) error {
 
 	body, err := json.Marshal(tag)
 	if err != nil {
-		return fmt.Errorf("Can't marsal struct %v. Error: %v", tag, err)
+		return fmt.Errorf("Can't marsal struct %v. Error: %v\n", tag, err)
 	}
 	row, err := req.Post(body)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("Tag in gitea is created. Response: %x", row)
+	log.Printf("Tag in gitea is created. Response: %x\n", row)
 	return nil
 }
