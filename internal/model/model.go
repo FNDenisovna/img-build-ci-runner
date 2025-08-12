@@ -28,7 +28,7 @@ type SiteVersion struct {
 	Branch  string `json:"branch"`
 }
 
-type GiteaTag struct {
+type WfTag struct {
 	Message string `json:"message"`
 	TagName string `json:"tag_name"`
 	Target  string `json:"target"`
@@ -36,4 +36,29 @@ type GiteaTag struct {
 	Version string
 	Branch  string
 	Org     string
+}
+
+type WfInputDataImages struct {
+	Inputs WfInputsImages `json:"inputs"`
+	Ref    string         `json:"ref"`
+}
+
+type WfInputsImages struct {
+	Images []WfInputsImagesInfo `json:"images"`
+	Branch string               `json:"branch"`
+}
+
+type WfInputsImagesInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+type WfInputDataGroup struct {
+	Inputs WfInputsGroup `json:"inputs"`
+	Ref    string        `json:"ref"`
+}
+
+type WfInputsGroup struct {
+	Group  string `json:"group"`
+	Branch string `json:"branch"`
 }

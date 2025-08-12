@@ -3,24 +3,23 @@ package vers_checker_runner
 import (
 	"fmt"
 	"img-build-ci-runner/internal/compare"
-	img_info_getter "img-build-ci-runner/internal/img_info_getter/git_getter"
+	config "img-build-ci-runner/internal/config/viper"
+	"img-build-ci-runner/internal/img_info_getter/git_getter"
+	alt_api "img-build-ci-runner/internal/integration/alt_api"
+	wf_runner "img-build-ci-runner/internal/integration/wf_runner"
 	model "img-build-ci-runner/internal/model"
 	"log"
+	"strings"
 	"time"
 )
 
 type Service struct {
-	altapi        AltApi
-	gitea         GitApi
-	db            Db
-	branches      []string
-	imgInfoGetter ImgInfoGetter
-	token         string
+	cfg *config.Config
+	db  Db
 }
 
 type ImgInfoGetter interface {
 	GetImgPkgMap() map[string][]string
-	Update(giturl string, imgGroup string)
 }
 
 type Db interface {
@@ -28,106 +27,116 @@ type Db interface {
 	InsertPackage(pack *model.SqlPack) (int, error)
 }
 
-type AltApi interface {
-	GetSitePackInfo(name, branch string) (packinfo model.SiteVersion, err error)
-	GetPackInfo(name, branch string) (packinfo model.SiteVersion, err error)
+type WfApi interface {
+	RunBuildImage(inputData *model.WfInputDataImages) error
 }
 
-type GitApi interface {
-	RunBuildImage(tag *model.GiteaTag, token string) error
-}
-
-func New(altapi AltApi, gitea GitApi, db Db, branches []string, imgPkgGetterSouce string, imgGroup string, token string) *Service {
-	imgInfoGetter := img_info_getter.New(imgPkgGetterSouce, imgGroup)
+func New(db Db, c *config.Config) *Service {
 	return &Service{
-		altapi:        altapi,
-		gitea:         gitea,
-		db:            db,
-		branches:      branches,
-		imgInfoGetter: imgInfoGetter,
-		token:         token,
+		cfg: c,
+		db:  db,
 	}
-}
-
-func (s *Service) Update(branches []string, imgPkgGetterSouce string, imgGroup string, token string) {
-	s.branches = branches
-	s.imgInfoGetter.Update(imgPkgGetterSouce, imgGroup)
 }
 
 // Check versions of packages in images
 // If wersion is higther than in local memory
 // Run images building by sending tag to workflow repo
-func (s *Service) Run(simulate bool) error {
+func (s *Service) Run(simulate bool, closing chan bool) error {
+	//Get branches and group images (from images templates repo)
+	imgGroups := strings.Split(s.cfg.GetString(config.VersCheckImgGroupCfgKey), " ")
+	branches := strings.Split(s.cfg.GetString(config.BranchesCfgKey), " ")
+	altApiUrl := s.cfg.GetString(config.AltApiUrlCfgKey)
+	wfUrl := s.cfg.GetString(config.WfUrlCfgKey)
+	wfOrgRepo := s.cfg.GetString(config.WfOrgRepoCfgKey)
+	wfRefRepo := s.cfg.GetString(config.WfRefRepoCfgKey)
+	wfName := s.cfg.GetString(config.WfImagesNameCfgKey)
+	wfToken := s.cfg.GetString(config.WfTokenCfgKey)
+
 	//Get list images-packages for checking from config source
 	//key - image, value - list of packs
-	checklist := s.GetImgPkgMap()
-	branches := s.branches
+	for _, g := range imgGroups {
+		checklist := s.GetImgPkgMap(g)
 
-	//foreach branch check
-	for _, b := range branches {
-		packsDbMap, err := s.GetImgPkgMapDb(b)
-		if err != nil {
-			err = fmt.Errorf("Can't get packages list from db for branch %s. Error: %w\n", b, err)
-			return err
-		}
-
-		//foreach image get current version pack from site
-		for im, packs := range checklist {
-			mainPack := packs[0]
-			dbInfo, checked := packsDbMap[mainPack]
-
-			curPackInfo, err := s.altapi.GetSitePackInfo(mainPack, b)
-			if err != nil {
-				curPackInfo, err = s.altapi.GetPackInfo(mainPack, b)
+		//foreach branch check
+		for _, b := range branches {
+			select {
+			case <-closing:
+				log.Println("Finish packages version checker worker by closing chanell singal")
+				return nil
+			default:
+				packsDbMap, err := s.GetImgPkgMapDb(b)
 				if err != nil {
-					log.Printf("Can't get package info from basealt site. Package: %s, Branch: %s, Error: %v\n", mainPack, b, err)
-					continue
+					err = fmt.Errorf("Can't get packages list from db for branch %s. Error: %w\n", b, err)
+					return err
 				}
-			}
 
-			// packege exists in db
-			if checked && dbInfo.Version != "" {
-				//compare
-				dbVer := fmt.Sprintf("%d:%s-%s", dbInfo.Epoch, dbInfo.Version, dbInfo.Release)
-				curVer := fmt.Sprintf("%d:%s-%s", 0, curPackInfo.Version, curPackInfo.Release)
-				if compRes, _ := compare.Compare(curVer, dbVer); compRes <= 0 {
-					continue
+				data := &model.WfInputDataImages{
+					Ref: fmt.Sprintf("refs/heads/%s", wfRefRepo),
+					Inputs: model.WfInputsImages{
+						Branch: b,
+					},
 				}
-			}
 
-			//update version in db
-			dbInfo.Name = mainPack
-			dbInfo.Version = curPackInfo.Version
-			dbInfo.Release = curPackInfo.Release
-			dbInfo.Epoch = 0
-			dbInfo.Changed = time.Now()
-			dbInfo.Branch = b
+				//foreach image get current version pack from site
+				for im, packs := range checklist {
+					mainPack := packs[0]
+					dbInfo, checked := packsDbMap[mainPack]
 
-			s.db.InsertPackage(&dbInfo)
-			log.Printf("Insert to db: %v\n", dbInfo)
+					curPackInfo, err := alt_api.GetSitePackInfo(altApiUrl, mainPack, b)
+					if err != nil {
+						curPackInfo, err = alt_api.GetPackInfo(altApiUrl, mainPack, b)
+						if err != nil {
+							log.Printf("Can't get package info from basealt site. Package: %s, Branch: %s, Error: %v\n", mainPack, b, err)
+							continue
+						}
+					}
 
-			if !simulate {
-				//generate message to email
-				//TODO
+					// packege exists in db
+					if checked && dbInfo.Version != "" {
+						//compare
+						dbVer := fmt.Sprintf("%d:%s-%s", dbInfo.Epoch, dbInfo.Version, dbInfo.Release)
+						curVer := fmt.Sprintf("%d:%s-%s", 0, curPackInfo.Version, curPackInfo.Release)
+						if compRes, _ := compare.Compare(curVer, dbVer); compRes <= 0 {
+							continue
+						}
+					}
 
-				//generate run building image
-				tag := &model.GiteaTag{
-					Image:   im,
-					Branch:  b,
-					Version: curPackInfo.Version,
+					//update version in db
+					dbInfo.Name = mainPack
+					dbInfo.Version = curPackInfo.Version
+					dbInfo.Release = curPackInfo.Release
+					dbInfo.Epoch = 0
+					dbInfo.Changed = time.Now()
+					dbInfo.Branch = b
+
+					s.db.InsertPackage(&dbInfo)
+					log.Printf("Insert to db: %v\n", dbInfo)
+
+					data.Inputs.Images = append(data.Inputs.Images, model.WfInputsImagesInfo{
+						Name:    im,
+						Version: curPackInfo.Version,
+					})
+					time.Sleep(time.Minute * 90)
 				}
-				s.gitea.RunBuildImage(tag, "")
-			}
 
-			time.Sleep(time.Second * 15)
+				//foreach branch run building workflow
+				if !simulate {
+					//generate message to email
+					//TODO
+
+					wf_runner.RunBuildImage(data, wfUrl, wfName, wfOrgRepo, wfToken)
+				}
+
+			}
 		}
 	}
 
 	return nil
 }
 
-func (s *Service) GetImgPkgMap() map[string][]string {
-	return s.imgInfoGetter.GetImgPkgMap()
+func (s *Service) GetImgPkgMap(imgGroup string) map[string][]string {
+	imgInfoGetter := git_getter.New(s.cfg.GetString(config.ImgPkgGetterSouceCfgKey), imgGroup)
+	return imgInfoGetter.GetImgPkgMap()
 }
 
 func (s *Service) GetImgPkgMapDb(b string) (map[string]model.SqlPack, error) {
