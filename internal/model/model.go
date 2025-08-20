@@ -1,6 +1,8 @@
 package model
 
-import "time"
+import (
+	"time"
+)
 
 type ImgPkg struct {
 	// key Image string `json:"image"`
@@ -44,8 +46,9 @@ type WfInputDataImages struct {
 }
 
 type WfInputsImages struct {
-	Images []WfInputsImagesInfo `json:"images"`
-	Branch string               `json:"branch"`
+	Images    []WfInputsImagesInfo `json:"-"`
+	Branch    string               `json:"branch"`
+	ImagesStr string               `json:"images"`
 }
 
 type WfInputsImagesInfo struct {

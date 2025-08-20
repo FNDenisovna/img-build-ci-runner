@@ -1,6 +1,7 @@
 package vers_checker_runner
 
 import (
+	"encoding/json"
 	"fmt"
 	"img-build-ci-runner/internal/compare"
 	config "img-build-ci-runner/internal/config/viper"
@@ -54,11 +55,11 @@ func (s *Service) Run(simulate bool, closing chan bool) error {
 
 	//Get list images-packages for checking from config source
 	//key - image, value - list of packs
-	for _, g := range imgGroups {
+	for ig, g := range imgGroups {
 		checklist := s.GetImgPkgMap(g)
 
 		//foreach branch check
-		for _, b := range branches {
+		for ib, b := range branches {
 			select {
 			case <-closing:
 				log.Println("Finish packages version checker worker by closing chanell singal")
@@ -84,6 +85,8 @@ func (s *Service) Run(simulate bool, closing chan bool) error {
 
 					curPackInfo, err := alt_api.GetSitePackInfo(altApiUrl, mainPack, b)
 					if err != nil {
+						log.Printf("Can't get package info from basealt site tasks info. Package: %s, Branch: %s, Error: %v\n", mainPack, b, err)
+						log.Printf("Try again from basealt site total package info\n")
 						curPackInfo, err = alt_api.GetPackInfo(altApiUrl, mainPack, b)
 						if err != nil {
 							log.Printf("Can't get package info from basealt site. Package: %s, Branch: %s, Error: %v\n", mainPack, b, err)
@@ -113,20 +116,41 @@ func (s *Service) Run(simulate bool, closing chan bool) error {
 					log.Printf("Insert to db: %v\n", dbInfo)
 
 					data.Inputs.Images = append(data.Inputs.Images, model.WfInputsImagesInfo{
-						Name:    im,
+						Name:    fmt.Sprintf("%s/%s", g, im),
 						Version: curPackInfo.Version,
 					})
-					time.Sleep(time.Minute * 90)
+					time.Sleep(time.Second * 5)
 				}
+
+				imagesBytes, err := json.Marshal(data.Inputs.Images)
+				if err != nil {
+					log.Printf("Can't marshal data.Inputs.Images to string. Error: %v\n", err)
+					continue
+				}
+				//imagesStr := strings.ReplaceAll(string(imagesBytes), "\"name\"", "\\\"name\\\"")
+				//data.Inputs.ImagesStr = strings.ReplaceAll(imagesStr, "\"version\"", "\\\"version\\\"")
+				data.Inputs.ImagesStr = string(imagesBytes)
 
 				//foreach branch run building workflow
 				if !simulate {
 					//generate message to email
 					//TODO
 
-					wf_runner.RunBuildImage(data, wfUrl, wfName, wfOrgRepo, wfToken)
+					_ = wf_runner.RunBuildImage(data, wfUrl, wfName, wfOrgRepo, wfToken)
 				}
 
+				if ib >= len(branches)-1 {
+					continue
+				} else {
+					time.Sleep(time.Minute * 40)
+				}
+			}
+
+			// time delay between running workflow and new
+			if ig >= len(imgGroups)-1 {
+				continue
+			} else {
+				time.Sleep(time.Minute * 40)
 			}
 		}
 	}

@@ -64,7 +64,7 @@ func (g *GitGetter) GetImgPkgMap() map[string][]string {
 	if err != nil {
 		return nil
 	}
-	log.Printf("Got groups from git repo: %v\n", orgdirs)
+	//log.Printf("Got groups from git repo: %v\n", orgdirs)
 
 	log.Printf("Start reading mapping images-packes from repo %s...\n", g.GitUrl)
 	imgGroupList := strings.Split(g.ImgGroup, " ")

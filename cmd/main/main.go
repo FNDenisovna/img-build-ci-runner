@@ -17,6 +17,7 @@ import (
 )
 
 func main() {
+	log.Println("Start working")
 	cfg := config.New()
 
 	versCronExp := cfg.GetString("vers_check_img_group")
@@ -44,14 +45,16 @@ func main() {
 	success := make(chan bool)
 
 	go func() {
-		if err = versSrv.Run(true, closing); err != nil {
+		log.Println("Run service")
+		if err = versSrv.Run(false, closing); err != nil {
+			log.Println(err)
 			errChan <- err
+			return
 		}
+		success <- true
 	}()
 
-	return
-
-	//Run first getting versions of packageList
+	/*//Run first getting versions of packageList
 	go func() {
 		if err = versSrv.Run(true, closing); err != nil {
 			log.Println(err)
@@ -59,7 +62,7 @@ func main() {
 			return
 		}
 		success <- true
-	}()
+	}()*/
 
 	select {
 	case err = <-errChan:
@@ -74,7 +77,8 @@ func main() {
 		close(errChan)
 		return
 	case <-success:
-		break
+		return
+		//break
 	}
 
 	wg := &sync.WaitGroup{}

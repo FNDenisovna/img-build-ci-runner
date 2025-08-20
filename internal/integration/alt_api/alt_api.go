@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"img-build-ci-runner/internal/api"
 	model "img-build-ci-runner/internal/model"
+	"log"
+	"time"
 )
 
 type SitePackInfo struct {
@@ -27,14 +29,22 @@ func GetSitePackInfo(url, name, branch string) (packinfo model.SiteVersion, err 
 	req := api.New(endpoint)
 	req.Params = params
 
-	row, err := req.Get()
+	row, statusCode, err := req.Get()
+	if statusCode == 429 {
+		log.Printf("Can't get response: Too Many Requests. Sleep and try again.")
+		time.Sleep(time.Second * 10)
+		row, statusCode, err = req.Get()
+	}
+
 	if err != nil {
 		return
 	}
 
 	var resp SitePackInfo
+
 	err = json.Unmarshal(row, &resp)
 	if err != nil {
+		log.Printf("Alt-api response: %v", string(row))
 		err = fmt.Errorf("Unmarshal response is failed. Error: %w\n", err)
 		return
 	}
@@ -63,7 +73,12 @@ func GetPackInfo(url, name, branch string) (packinfo model.SiteVersion, err erro
 	req := api.New(endpoint)
 	req.Params = params
 
-	row, err := req.Get()
+	row, statusCode, err := req.Get()
+	if statusCode == 429 {
+		log.Printf("Can't get response: Too Many Requests. Sleep and try again.")
+		time.Sleep(time.Second * 10)
+		row, statusCode, err = req.Get()
+	}
 	if err != nil {
 		return
 	}

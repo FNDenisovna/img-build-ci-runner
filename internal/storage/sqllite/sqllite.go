@@ -2,7 +2,6 @@ package sqllite
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -11,7 +10,7 @@ import (
 )
 
 var (
-	dbpath = "~/.local/share/img-build-ci-runner"
+	dbpath = "img-build-ci-runner"
 	dbname = "packages.db"
 )
 
@@ -31,19 +30,26 @@ const create string = `
 func New(args ...string) (db *sql.DB, err error) {
 	if len(args) > 0 && args[0] != "" {
 		dbpath = args[0]
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatalf("Can't get home directory of current host user to create DB. Error: %v\n", err)
+		}
+
+		dbpath = filepath.Join(home, "/.local/share", dbpath)
 	}
-	log.Printf("DB path path: %s\n", dbpath)
+	log.Printf("DB path: %s\n", dbpath)
 
 	dbpath, err = filepath.Abs(dbpath)
 	if err != nil {
-		log.Fatalf(fmt.Sprintf("Can't parse DB directory. Path %s. Error: %v\n", dbpath, err))
+		log.Fatalf("Can't parse DB directory. Path %s. Error: %v\n", dbpath, err)
 	}
-	log.Printf("Parsed DB path path: %s\n", dbpath)
+	log.Printf("Parsed DB path: %s\n", dbpath)
 
 	if _, err = os.Stat(dbpath); os.IsNotExist(err) {
-		err = os.Mkdir(dbpath, 0750)
+		err = os.MkdirAll(dbpath, 0750)
 		if err != nil && !os.IsExist(err) {
-			log.Fatalf(fmt.Sprintf("Can't create DB directory. Path %s. Error: %v\n", dbpath, err))
+			log.Fatalf("Can't create DB directory. Path %s. Error: %v\n", dbpath, err)
 		}
 	}
 

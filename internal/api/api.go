@@ -23,7 +23,11 @@ func New(url string) *Request {
 	}
 }
 
-func (req *Request) Get() ([]byte, error) {
+// Return
+// Response []byte
+// Status cose of http-respose
+// Error test
+func (req *Request) Get() ([]byte, int, error) {
 	client := &http.Client{
 		Timeout: 15 * time.Second,
 	}
@@ -37,27 +41,31 @@ func (req *Request) Get() ([]byte, error) {
 		url = strings.TrimSuffix(url, "&")
 	}
 
-	fmt.Printf("Total url: %v\n", url)
+	//log.Printf("Total url: %v\n", url)
 
-	r, err := client.Get(url)
+	res, err := client.Get(url)
 	if err != nil {
 		err = fmt.Errorf("Request to url (%s) is failed. Error: %w\n", url, err)
-		return nil, err
+		return nil, 0, err
 	}
-	defer r.Body.Close()
-	body, err := io.ReadAll(r.Body)
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		err = fmt.Errorf("Reading of response is failed. Error: %w\n", err)
-		return nil, err
+		return nil, 0, err
 	}
 
-	return body, nil
+	return body, res.StatusCode, nil
 }
 
-func (req *Request) Post(body []byte) ([]byte, error) {
+// Return
+// Response []byte
+// Status cose of http-respose
+// Error test
+func (req *Request) Post(body []byte) ([]byte, int, error) {
 	r, err := http.NewRequest("POST", req.Url, bytes.NewBuffer(body))
 	if err != nil {
-		return nil, fmt.Errorf("Can't create post request to %s. Error: %v\n", req.Url, err)
+		return nil, 0, fmt.Errorf("Can't create post request to %s. Error: %v\n", req.Url, err)
 	}
 	if len(req.Headers) > 0 {
 		for key, value := range req.Headers {
@@ -68,20 +76,16 @@ func (req *Request) Post(body []byte) ([]byte, error) {
 	client := &http.Client{}
 	res, err := client.Do(r)
 	if err != nil {
-		return nil, fmt.Errorf("Post request is failed. Url: %s\n, Body: %v\n, Headers: %v\n, Error: %v\n", req.Url, body, req.Headers, err)
+		return nil, 0, fmt.Errorf("Post request is failed. Url: %s\n, Body: %v\n, Headers: %v\n, Error: %v\n", req.Url, body, req.Headers, err)
 	}
 
 	defer res.Body.Close()
 
 	resbody, err := io.ReadAll(res.Body)
-	//StatusCreated = 201
-	if res.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("Post request has unsuccessfull status code. Url: %s\n, Body: %v\n, Headers: %v\n, Status: %s, Response: %x\n", req.Url, body, req.Headers, res.Status, resbody)
-	}
 
 	if err != nil {
-		return nil, fmt.Errorf("Failed reading post response. Url: %s\n, Body: %v\n, Headers: %v\n, Status: %s, Response: %x, Error: %v\n", req.Url, body, req.Headers, res.Status, resbody, err)
+		return nil, res.StatusCode, fmt.Errorf("Failed reading post response. Url: %s\n, Body: %v\n, Headers: %v\n, Status: %s, Response: %x, Error: %v\n", req.Url, body, req.Headers, res.Status, resbody, err)
 	}
 
-	return resbody, nil
+	return resbody, res.StatusCode, nil
 }

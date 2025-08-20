@@ -43,13 +43,13 @@ func RunBuildImageV1(tag *model.WfTag, url, orgRepo, token string) error {
 
 	tag.TagName = fmt.Sprintf("%s_%s_%s", tag.Branch, tag.Image, tag.Version)
 	req := api.New(endpoint)
-	req.Params = headers
+	req.Headers = headers
 
 	body, err := json.Marshal(tag)
 	if err != nil {
 		return fmt.Errorf("Can't marsal struct %v. Error: %v\n", tag, err)
 	}
-	row, err := req.Post(body)
+	row, _, err := req.Post(body)
 	if err != nil {
 		return err
 	}
@@ -81,28 +81,36 @@ func RunBuildImageV1(tag *model.WfTag, url, orgRepo, token string) error {
 /// inputs - is getting from difinition of workflow
 /// V1 - nhit method create tag for running ci
 func RunBuildImage[T WfInputData](inputData *T, url, wfName, orgRepo, token string) error {
-	endpoint := fmt.Sprintf("%sapi/v1/repos/%s/actions/workflows/$s/dispatches",
+	endpoint := fmt.Sprintf("%sapi/v1/repos/%s/actions/workflows/%s/dispatches",
 		url, orgRepo, wfName)
+	log.Printf("Endpoint to run workflow: %v", endpoint)
 	headers := make(map[string]string, 3)
 	headers["accept"] = "application/json"
 	headers["authorization"] = fmt.Sprintf("Basic %s", token)
 	headers["Content-Type"] = "application/json"
 
 	req := api.New(endpoint)
-	req.Params = headers
+	req.Headers = headers
 
 	body, err := json.Marshal(inputData)
 	if err != nil {
-		return fmt.Errorf("Can't marsal struct *model.WfInputData %v. Error: %v\n", inputData, err)
-	}
-
-	log.Printf("Request body: %v\n", body)
-
-	row, err := req.Post(body)
-	if err != nil {
+		log.Printf("Can't marsal struct *model.WfInputData %v. Error: %w\n", inputData, err)
 		return err
 	}
 
-	log.Printf("Building workflow is running. Response: %x\n", row)
+	log.Printf("Request body: %v\n", string(body))
+
+	row, statusCode, err := req.Post(body)
+	if err != nil {
+		log.Printf("Can't run workflow. Status code: %v, Error: %v, Response: %v\n", statusCode, err, string(row))
+		return err
+	}
+
+	if statusCode >= 300 {
+		log.Printf("Can't run workflow. Status code: %v, Error: %v, Response: %v\n", statusCode, err, string(row))
+		return err
+	}
+
+	log.Printf("Building workflow is running. Status code: %v. Response: %v\n", statusCode, string(row))
 	return nil
 }
