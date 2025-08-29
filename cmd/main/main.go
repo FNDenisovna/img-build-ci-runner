@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -8,6 +9,8 @@ import (
 	"syscall"
 
 	config "img-build-ci-runner/internal/config/viper"
+	renderpython "img-build-ci-runner/internal/render_python"
+	"img-build-ci-runner/internal/resources"
 	period_service "img-build-ci-runner/internal/service/periodically_runner"
 	vers_service "img-build-ci-runner/internal/service/vers_checker_runner"
 	"img-build-ci-runner/internal/storage"
@@ -16,7 +19,25 @@ import (
 	cron "gopkg.in/robfig/cron.v2"
 )
 
+var (
+	logFileName = "img-build-ci-runner.log"
+)
+
 func main() {
+	//redirect logs to file
+	logpath := resources.ManageResources("", logFileName)
+	logFile, err := os.OpenFile(logpath, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		log.Panic(err)
+	}
+	defer logFile.Close()
+
+	// redirect all the output to file
+	wrt := io.MultiWriter(os.Stdout, logFile)
+
+	// set log out put
+	log.SetOutput(wrt)
+
 	log.Println("Start working")
 	cfg := config.New()
 
@@ -35,6 +56,8 @@ func main() {
 		db.Close()
 	}()
 
+	renderpython.CreateScriptFile(storagePath)
+
 	versSrv := vers_service.New(db, cfg)
 	periodSrv := period_service.New(cfg)
 
@@ -44,6 +67,7 @@ func main() {
 	closing := make(chan bool)  // closing signal channel for childs
 	success := make(chan bool)
 
+	/* to test
 	go func() {
 		log.Println("Run service")
 		if err = versSrv.Run(false, closing); err != nil {
@@ -52,17 +76,17 @@ func main() {
 			return
 		}
 		success <- true
-	}()
+	}()*/
 
-	/*//Run first getting versions of packageList
+	//Run first getting versions of packageList
 	go func() {
-		if err = versSrv.Run(true, closing); err != nil {
+		if err = versSrv.Run(true, false, closing); err != nil {
 			log.Println(err)
 			errChan <- err
 			return
 		}
 		success <- true
-	}()*/
+	}()
 
 	select {
 	case err = <-errChan:
@@ -77,8 +101,8 @@ func main() {
 		close(errChan)
 		return
 	case <-success:
-		return
-		//break
+		//return //to test
+		break
 	}
 
 	wg := &sync.WaitGroup{}
@@ -89,7 +113,7 @@ func main() {
 		wg.Add(1)
 		defer wg.Done()
 
-		if err = versSrv.Run(true, closing); err != nil {
+		if err = versSrv.Run(true, false, closing); err != nil {
 			errChan <- err
 		}
 	})

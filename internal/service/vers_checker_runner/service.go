@@ -3,15 +3,17 @@ package vers_checker_runner
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
+	"time"
+
 	"img-build-ci-runner/internal/compare"
 	config "img-build-ci-runner/internal/config/viper"
 	"img-build-ci-runner/internal/img_info_getter/git_getter"
 	alt_api "img-build-ci-runner/internal/integration/alt_api"
 	wf_runner "img-build-ci-runner/internal/integration/wf_runner"
 	model "img-build-ci-runner/internal/model"
-	"log"
-	"strings"
-	"time"
+	renderpython "img-build-ci-runner/internal/render_python"
 )
 
 type Service struct {
@@ -42,7 +44,7 @@ func New(db Db, c *config.Config) *Service {
 // Check versions of packages in images
 // If wersion is higther than in local memory
 // Run images building by sending tag to workflow repo
-func (s *Service) Run(simulate bool, closing chan bool) error {
+func (s *Service) Run(simulateWf, simulateDb bool, closing chan bool) error {
 	//Get branches and group images (from images templates repo)
 	imgGroups := strings.Split(s.cfg.GetString(config.VersCheckImgGroupCfgKey), " ")
 	branches := strings.Split(s.cfg.GetString(config.BranchesCfgKey), " ")
@@ -67,7 +69,7 @@ func (s *Service) Run(simulate bool, closing chan bool) error {
 			default:
 				packsDbMap, err := s.GetImgPkgMapDb(b)
 				if err != nil {
-					err = fmt.Errorf("Can't get packages list from db for branch %s. Error: %w\n", b, err)
+					log.Printf("Can't get packages list from db for branch %s. Error: %v\n", b, err)
 					return err
 				}
 
@@ -78,48 +80,75 @@ func (s *Service) Run(simulate bool, closing chan bool) error {
 					},
 				}
 
+				//list info about package to insert after running wf
+				toDbInsert := make(map[string]model.SqlPack)
+
 				//foreach image get current version pack from site
 				for im, packs := range checklist {
 					mainPack := packs[0]
-					dbInfo, checked := packsDbMap[mainPack]
 
-					curPackInfo, err := alt_api.GetSitePackInfo(altApiUrl, mainPack, b)
-					if err != nil {
-						log.Printf("Can't get package info from basealt site tasks info. Package: %s, Branch: %s, Error: %v\n", mainPack, b, err)
-						log.Printf("Try again from basealt site total package info\n")
-						curPackInfo, err = alt_api.GetPackInfo(altApiUrl, mainPack, b)
+					packsListByName := make([]model.PackInfoByName, 0, len(packs))
+
+					templated := renderpython.CheckTemplate(mainPack)
+					if templated {
+						//get package name where istead version is ""
+						mainPack = renderpython.RenderPackageName(mainPack, b, "")
+						//find all packages where is mainPame result
+						packsListByName, err = alt_api.GetPacksListByName(altApiUrl, mainPack, b)
 						if err != nil {
-							log.Printf("Can't get package info from basealt site. Package: %s, Branch: %s, Error: %v\n", mainPack, b, err)
+							log.Printf("Can't get package list by name-template, skip it. Error: %v\n", err)
 							continue
 						}
+					} else {
+						packsListByName = append(packsListByName, model.PackInfoByName{
+							Name: mainPack,
+						})
 					}
 
-					// packege exists in db
-					if checked && dbInfo.Version != "" {
-						//compare
-						dbVer := fmt.Sprintf("%d:%s-%s", dbInfo.Epoch, dbInfo.Version, dbInfo.Release)
-						curVer := fmt.Sprintf("%d:%s-%s", 0, curPackInfo.Version, curPackInfo.Release)
-						if compRes, _ := compare.Compare(curVer, dbVer); compRes <= 0 {
-							continue
+					for _, pack := range packsListByName {
+
+						dbInfo, checked := packsDbMap[pack.Name]
+
+						curPackInfo, err := alt_api.GetTaskPackInfo(altApiUrl, pack.Name, b)
+						if err != nil {
+							log.Printf("Can't get package info from basealt site tasks info. Package: %s, Branch: %s, Error: %v\n", mainPack, b, err)
+							log.Printf("Try again from basealt site total package info\n")
+
+							curPackInfo, err = alt_api.GetPackInfo(altApiUrl, pack.Name, b)
+							if err != nil {
+								log.Printf("Can't get package info from basealt site. Package: %s, Branch: %s, Error: %v\n", mainPack, b, err)
+								continue
+							}
 						}
+
+						// packege exists in db
+						if checked && dbInfo.Version != "" {
+							//compare
+							dbVer := fmt.Sprintf("%d:%s-%s", dbInfo.Epoch, dbInfo.Version, dbInfo.Release)
+							curVer := fmt.Sprintf("%d:%s-%s", 0, curPackInfo.Version, curPackInfo.Release)
+							if compRes, _ := compare.Compare(curVer, dbVer); compRes <= 0 {
+								continue
+							}
+						}
+
+						//update version in db
+						dbInfo.Name = pack.Name
+						dbInfo.Version = curPackInfo.Version
+						dbInfo.Release = curPackInfo.Release
+						dbInfo.Epoch = 0
+						dbInfo.Changed = time.Now()
+						dbInfo.Branch = b
+
+						//add to list info about package to insert after running wf
+						if _, ok := toDbInsert[dbInfo.Name]; !ok {
+							toDbInsert[dbInfo.Name] = dbInfo
+						}
+						data.Inputs.Images = append(data.Inputs.Images, model.WfInputsImagesInfo{
+							Name:    fmt.Sprintf("%s/%s", g, im),
+							Version: curPackInfo.Version,
+						})
+						time.Sleep(time.Second * 5)
 					}
-
-					//update version in db
-					dbInfo.Name = mainPack
-					dbInfo.Version = curPackInfo.Version
-					dbInfo.Release = curPackInfo.Release
-					dbInfo.Epoch = 0
-					dbInfo.Changed = time.Now()
-					dbInfo.Branch = b
-
-					s.db.InsertPackage(&dbInfo)
-					log.Printf("Insert to db: %v\n", dbInfo)
-
-					data.Inputs.Images = append(data.Inputs.Images, model.WfInputsImagesInfo{
-						Name:    fmt.Sprintf("%s/%s", g, im),
-						Version: curPackInfo.Version,
-					})
-					time.Sleep(time.Second * 5)
 				}
 
 				imagesBytes, err := json.Marshal(data.Inputs.Images)
@@ -127,21 +156,34 @@ func (s *Service) Run(simulate bool, closing chan bool) error {
 					log.Printf("Can't marshal data.Inputs.Images to string. Error: %v\n", err)
 					continue
 				}
-				//imagesStr := strings.ReplaceAll(string(imagesBytes), "\"name\"", "\\\"name\\\"")
-				//data.Inputs.ImagesStr = strings.ReplaceAll(imagesStr, "\"version\"", "\\\"version\\\"")
+
 				data.Inputs.ImagesStr = string(imagesBytes)
+				var successWf bool
 
 				//foreach branch run building workflow
-				if !simulate {
+				if !simulateWf {
 					//generate message to email
 					//TODO
 
-					_ = wf_runner.RunBuildImage(data, wfUrl, wfName, wfOrgRepo, wfToken)
+					err = wf_runner.RunBuildImage(data, wfUrl, wfName, wfOrgRepo, wfToken)
+					if err != nil {
+						log.Printf("Can't running workflow, skip inserting to db. WF url: %s, WF name: %s, WF org repo: %s, Error: %v\n", wfUrl, wfName, wfOrgRepo, err)
+					} else {
+						successWf = true
+					}
+				}
+
+				if !simulateDb && successWf || !simulateDb && simulateWf {
+					for _, dbInfo := range toDbInsert {
+						s.db.InsertPackage(&dbInfo)
+						log.Printf("Insert to db: %v\n", dbInfo)
+					}
 				}
 
 				if ib >= len(branches)-1 {
 					continue
 				} else {
+					//Add witing for finish of previos WF
 					time.Sleep(time.Minute * 40)
 				}
 			}
@@ -150,6 +192,7 @@ func (s *Service) Run(simulate bool, closing chan bool) error {
 			if ig >= len(imgGroups)-1 {
 				continue
 			} else {
+				//Add witing for finish of previos WF
 				time.Sleep(time.Minute * 40)
 			}
 		}
