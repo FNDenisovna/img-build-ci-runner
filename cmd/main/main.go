@@ -1,27 +1,30 @@
 package main
 
 import (
-	"img-build-ci-runner/internal/config"
-	"img-build-ci-runner/internal/storage"
-
-	"img-build-ci-runner/internal/integration/altapi"
-	"img-build-ci-runner/internal/integration/gitea"
-	deps_service "img-build-ci-runner/internal/service/deps_cron_runner"
-	vers_service "img-build-ci-runner/internal/service/vers_checker_runner"
-	sql "img-build-ci-runner/internal/storage/sqllite"
 	"log"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+
+	config "img-build-ci-runner/internal/config/viper"
+	period_service "img-build-ci-runner/internal/service/periodically_runner"
+	vers_service "img-build-ci-runner/internal/service/vers_checker_runner"
+	"img-build-ci-runner/internal/storage"
+	sql "img-build-ci-runner/internal/storage/sqllite"
 
 	cron "gopkg.in/robfig/cron.v2"
 )
 
 func main() {
+	log.Println("Start working")
 	cfg := config.New()
-	aapi := altapi.New(cfg.GetSettings("AltSiteUrl"))
-	gapi := gitea.New(cfg.GetSettings("GiteaWfUrl"))
-	versCronExp := cfg.GetSettings("VersCronGroupExp")
-	depsCronExp := cfg.GetSettings("DepsCronGroupExp")
 
-	dbDriver, err := sql.New()
+	versCronExp := cfg.GetString("vers_check_img_group")
+	periodCronExp := cfg.GetString("period_cron_omg_group")
+	storagePath := cfg.GetString("storage_path")
+
+	dbDriver, err := sql.New(storagePath)
 	if err != nil {
 		log.Fatalf("Can't create/open db. Error: %v\n", err)
 		return
@@ -32,38 +35,70 @@ func main() {
 		db.Close()
 	}()
 
-	versSrv := vers_service.New(aapi, gapi, db, cfg.GetBranches(), cfg.GetSettings("GiteaRepoUrl"), cfg.GetSettings("VersCheckImgGroup"), cfg.GetSettings("GiteaToken"))
-	depsSrv := deps_service.New(gapi, cfg.GetBranches(), cfg.GetSettings("GiteaRepoUrl"), cfg.GetSettings("DepsCronImgGroup"), cfg.GetSettings("GiteaToken"))
-	//Run first getting versions of packageList
-	if err = versSrv.Run(true); err != nil {
-		log.Fatalln(err)
+	versSrv := vers_service.New(db, cfg)
+	periodSrv := period_service.New(cfg)
+
+	exit_chan := make(chan os.Signal, 1)
+	signal.Notify(exit_chan, os.Interrupt, syscall.SIGTERM)
+	errChan := make(chan error) // getting errors from childs channel
+	closing := make(chan bool)  // closing signal channel for childs
+	success := make(chan bool)
+
+	go func() {
+		log.Println("Run service")
+		if err = versSrv.Run(false, closing); err != nil {
+			log.Println(err)
+			errChan <- err
+			return
+		}
+		success <- true
+	}()
+
+	/*//Run first getting versions of packageList
+	go func() {
+		if err = versSrv.Run(true, closing); err != nil {
+			log.Println(err)
+			errChan <- err
+			return
+		}
+		success <- true
+	}()*/
+
+	select {
+	case err = <-errChan:
+		log.Println("Exit by error: ", err)
+		close(closing)
+		close(errChan)
 		return
+	case <-exit_chan:
+		log.Println("Exit by os.Interrupt syscall.SIGTERM")
+		// initiate graceful shutdown
+		close(closing)
+		close(errChan)
+		return
+	case <-success:
+		return
+		//break
 	}
 
-	errChan := make(chan error)
-
+	wg := &sync.WaitGroup{}
 	c := cron.New()
 	// add versions chercher runner
+
 	c.AddFunc(versCronExp, func() {
-		if err := cfg.UpdateSettings(); err != nil {
-			errChan <- err
-		}
-		aapi.Update(cfg.GetSettings("AltSiteUrl"))
-		gapi.Update(cfg.GetSettings("GiteaWfUrl"))
-		versSrv.Update(cfg.GetBranches(), cfg.GetSettings("GiteaRepoUrl"), cfg.GetSettings("VersCheckImgGroup"), cfg.GetSettings("GiteaToken"))
-		if err = versSrv.Run(true); err != nil {
+		wg.Add(1)
+		defer wg.Done()
+
+		if err = versSrv.Run(true, closing); err != nil {
 			errChan <- err
 		}
 	})
 	// add dependensy runner
-	c.AddFunc(depsCronExp, func() {
-		if err := cfg.UpdateSettings(); err != nil {
-			errChan <- err
-		}
-		aapi.Update(cfg.GetSettings("AltSiteUrl"))
-		gapi.Update(cfg.GetSettings("GiteaWfUrl"))
-		depsSrv.Update(cfg.GetBranches(), cfg.GetSettings("GiteaRepoUrl"), cfg.GetSettings("DepsCronImgGroup"), cfg.GetSettings("GiteaToken"))
-		if err = depsSrv.Run(false); err != nil {
+	c.AddFunc(periodCronExp, func() {
+		wg.Add(1)
+		defer wg.Done()
+
+		if err = periodSrv.Run(true, closing); err != nil {
 			errChan <- err
 		}
 	})
@@ -71,8 +106,18 @@ func main() {
 	defer c.Stop()
 
 	select {
-	case err := <-errChan:
-		log.Fatalln(err)
+	case err = <-errChan:
+		log.Print(err)
+		close(closing)
+		wg.Wait() //wait childs
+		close(errChan)
+		return
+	case <-exit_chan:
+		log.Println("Exit by os.Interrupt syscall.SIGTERM")
+		// initiate graceful shutdown
+		close(closing)
+		wg.Wait() //wait childs
+		close(errChan)
 		return
 	}
 }

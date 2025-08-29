@@ -34,31 +34,6 @@ func New(giturl string, imgGroup string) *GitGetter {
 	}
 }
 
-func (g *GitGetter) Update(giturl string, imgGroup string) {
-	g.GitUrl = giturl
-	g.ImgGroup = imgGroup
-}
-
-// Return list of
-func (g *GitGetter) GetImgGroup() []string {
-	orgdirs, err := g.getImgGroups()
-	if err != nil {
-		return nil
-	}
-	log.Printf("Got groups from git repo: %v\n", orgdirs)
-
-	imgGroupListFromRepo := make([]string, 0)
-	imgGroupList := strings.Split(g.ImgGroup, " ")
-	for _, orgd := range *orgdirs {
-		if !slices.Contains(imgGroupList, orgd.Name()) {
-			continue
-		}
-
-		imgGroupListFromRepo = append(imgGroupList, orgd.Name())
-	}
-	return imgGroupListFromRepo
-}
-
 // Return map with image key and value as base image of this image
 func (g *GitGetter) GetImgWithDeps() map[string]string {
 	orgdirs, err := g.getImgGroups()
@@ -89,7 +64,7 @@ func (g *GitGetter) GetImgPkgMap() map[string][]string {
 	if err != nil {
 		return nil
 	}
-	log.Printf("Got groups from git repo: %v\n", orgdirs)
+	//log.Printf("Got groups from git repo: %v\n", orgdirs)
 
 	log.Printf("Start reading mapping images-packes from repo %s...\n", g.GitUrl)
 	imgGroupList := strings.Split(g.ImgGroup, " ")
