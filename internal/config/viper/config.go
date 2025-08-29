@@ -2,8 +2,8 @@ package config
 
 import (
 	"bytes"
-	"fmt"
 	"log"
+	"path/filepath"
 
 	"img-build-ci-runner/configs"
 
@@ -30,21 +30,26 @@ func New() *Config {
 	}
 	log.Printf("Config path: %s\n", configPath)
 
-	viper.AddConfigPath("/etc/appname/")
-	viper.AddConfigPath(configPath)
+	v.AddConfigPath(configPath)
+	v.AddConfigPath(filepath.Join("/etc/", appname))
 
-	if err := viper.ReadInConfig(); err != nil {
+	if err := v.ReadInConfig(); err != nil {
+		log.Println("Config file is not found. Error: ", err)
+		log.Println("Create config from template...")
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			viper.ReadConfig(bytes.NewBuffer([]byte(configs.Cfg_example)))
-			viper.WriteConfig() // writes current config to predefined path set by 'viper.AddConfigPath()' and 'viper.SetConfigName'
-			viper.SafeWriteConfig()
+			v.ReadConfig(bytes.NewBuffer([]byte(configs.Cfg_example)))
+			err = v.WriteConfig() // writes current config to predefined path set by 'viper.AddConfigPath()' and 'viper.SetConfigName'
+			if err != nil {
+				log.Println("Can't save config to predefined file path")
+			}
+			v.SafeWriteConfig()
 		} else {
 			log.Fatalln(err)
 		}
 	}
 
 	v.OnConfigChange(func(e fsnotify.Event) {
-		fmt.Println("Config file changed:", e.Name)
+		log.Println("Config file changed:", e.Name)
 	})
 	v.WatchConfig()
 

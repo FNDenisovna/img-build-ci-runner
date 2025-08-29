@@ -64,7 +64,7 @@ func (g *GitGetter) GetImgPkgMap() map[string][]string {
 	if err != nil {
 		return nil
 	}
-	log.Printf("Got groups from git repo: %v\n", orgdirs)
+	//log.Printf("Got groups from git repo: %v\n", orgdirs)
 
 	log.Printf("Start reading mapping images-packes from repo %s...\n", g.GitUrl)
 	imgGroupList := strings.Split(g.ImgGroup, " ")
@@ -106,9 +106,9 @@ func (g *GitGetter) GetImgPkgMap() map[string][]string {
 			}
 
 			if iy.IsVersioned {
-				packs := beautify(iy.SourcePackages[:])
-				imgPkgMap[img.Name()] = packs
-				log.Printf("image %s, packeges: %v\n", img.Name(), packs)
+				//packs := beautify(iy.SourcePackages[:])
+				imgPkgMap[img.Name()] = iy.SourcePackages[:]
+				log.Printf("image %s, packeges: %v\n", img.Name(), iy.SourcePackages[:])
 			}
 		}
 	}
@@ -142,6 +142,7 @@ func (g *GitGetter) getImgGroups() (*[]fs.FileInfo, error) {
 	return &orgdirs, nil
 }
 
+// /For deleting templates
 func beautify(asis []string) []string {
 	tobe := make([]string, len(asis))
 	templ := `\{%.*?%\}|\{{2}.*?\}{2}`

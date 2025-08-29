@@ -1,6 +1,8 @@
 package model
 
-import "time"
+import (
+	"time"
+)
 
 type ImgPkg struct {
 	// key Image string `json:"image"`
@@ -10,13 +12,13 @@ type ImgPkg struct {
 
 // Model of info package from local service db
 type SqlPack struct {
-	Id      int
+	Changed time.Time
 	Name    string
 	Version string
 	Release string
-	Epoch   int
-	Changed time.Time
 	Branch  string
+	Id      int
+	Epoch   int
 }
 
 // Model of info package from basealt site api
@@ -26,6 +28,18 @@ type SiteVersion struct {
 	Release string `json:"release"`
 	Changed string `json:"changed"`
 	Branch  string `json:"branch"`
+}
+
+type PackInfoByName struct {
+	Versions []PackVersionByName `json:"versions"`
+	Name     string              `json:"name"`
+	ByBinary bool                `json:"by_binary"`
+}
+
+type PackVersionByName struct {
+	Version string `json:"version"`
+	Release string `json:"release"`
+	Deleted bool   `json:"deleted"`
 }
 
 type WfTag struct {
@@ -44,8 +58,9 @@ type WfInputDataImages struct {
 }
 
 type WfInputsImages struct {
-	Images []WfInputsImagesInfo `json:"images"`
-	Branch string               `json:"branch"`
+	Images    []WfInputsImagesInfo `json:"-"`
+	Branch    string               `json:"branch"`
+	ImagesStr string               `json:"images"`
 }
 
 type WfInputsImagesInfo struct {
