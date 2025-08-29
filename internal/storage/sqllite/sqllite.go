@@ -28,7 +28,7 @@ func New(args ...string) (db *sql.DB, err error) {
 	var dbpath string
 	if len(args) > 0 && args[0] != "" {
 		dbpath = args[0]
-	}
+	} 
 
 	dbpath = resources.ManageResources(dbpath, dbname)
 

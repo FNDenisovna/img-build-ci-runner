@@ -159,6 +159,7 @@ func (s *Service) Run(simulateWf, simulateDb bool, closing chan bool) error {
 
 				data.Inputs.ImagesStr = string(imagesBytes)
 				var successWf bool
+
 				//foreach branch run building workflow
 				if !simulateWf {
 					//generate message to email
