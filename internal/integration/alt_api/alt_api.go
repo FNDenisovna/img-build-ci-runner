@@ -105,7 +105,7 @@ func GetPacksListByName(url, template, branch string) (packlist []model.PackInfo
 
 	if resp.Packages != nil && len(resp.Packages) > 0 {
 		sort.Slice(resp.Packages, func(i, j int) bool { return resp.Packages[i].Name > resp.Packages[j].Name })
-		log.Printf("Sort result packages by template: %v", resp.Packages)
+		log.Printf("Sort result packages by template: %+v", resp.Packages)
 
 		regexpr := fmt.Sprintf("^%s.+", template)
 		packlist = make([]model.PackInfoByName, 0, 3)
@@ -119,7 +119,7 @@ func GetPacksListByName(url, template, branch string) (packlist []model.PackInfo
 				packlist = append(packlist, pack)
 			}
 			if len(packlist) >= 3 {
-				log.Printf("Resulting packages list finding by name-template %s: %v\n", template, packlist)
+				log.Printf("Resulting packages list finding by name-template %s: %+v\n", template, packlist)
 				return
 			}
 		}

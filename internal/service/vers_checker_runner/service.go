@@ -176,7 +176,7 @@ func (s *Service) Run(simulateWf, simulateDb bool, closing chan bool) error {
 				if !simulateDb && successWf || !simulateDb && simulateWf {
 					for _, dbInfo := range toDbInsert {
 						s.db.InsertPackage(&dbInfo)
-						log.Printf("Insert to db: %v\n", dbInfo)
+						log.Printf("Insert to db: %+v\n", dbInfo)
 					}
 				}
 
