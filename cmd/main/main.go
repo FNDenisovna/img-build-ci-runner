@@ -41,7 +41,11 @@ func main() {
 	log.Println("Start working")
 	cfg := config.New()
 
-	versCronExp := cfg.GetString("vers_check_img_group")
+	versCronExp := cfg.GetString("vers_cronexp")
+	if versCronExp == "" {
+		log.Panic("vers_cronexp is not set in config")
+	}
+
 	periodCronExp := cfg.GetString("period_cron_omg_group")
 	storagePath := cfg.GetString("storage_path")
 
@@ -109,7 +113,7 @@ func main() {
 	c := cron.New()
 	// add versions chercher runner
 
-	c.AddFunc(versCronExp, func() {
+	_, err = c.AddFunc(versCronExp, func() {
 		wg.Add(1)
 		defer wg.Done()
 
@@ -117,6 +121,11 @@ func main() {
 			errChan <- err
 		}
 	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+
 	// add dependensy runner
 	c.AddFunc(periodCronExp, func() {
 		wg.Add(1)
