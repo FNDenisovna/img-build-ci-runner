@@ -41,7 +41,7 @@ func GetTaskPackInfo(url, name, branch string) (packinfo model.SiteVersion, err 
 	if statusCode == 429 {
 		log.Printf("Can't get response: Too Many Requests. Sleep and try again.")
 		time.Sleep(time.Second * 10)
-		row, statusCode, err = req.Get()
+		row, _, err = req.Get()
 	}
 
 	if err != nil {
@@ -53,12 +53,12 @@ func GetTaskPackInfo(url, name, branch string) (packinfo model.SiteVersion, err 
 	err = json.Unmarshal(row, &resp)
 	if err != nil {
 		log.Printf("Alt-api response: %v", string(row))
-		err = fmt.Errorf("Unmarshal response is failed. Error: %w\n", err)
+		err = fmt.Errorf("unmarshal response is failed. Error: %w", err)
 		return
 	}
 
 	if resp.Message != "" {
-		err = fmt.Errorf("No found package %v on branch %v. Error message: %s\n", name, branch, resp.Message)
+		err = fmt.Errorf("no found package %v on branch %v. Error message: %s", name, branch, resp.Message)
 		return
 	}
 
@@ -67,7 +67,7 @@ func GetTaskPackInfo(url, name, branch string) (packinfo model.SiteVersion, err 
 		return
 	}
 
-	err = fmt.Errorf("Something wrong. No found package %v on branch %v\n", name, branch)
+	err = fmt.Errorf("something wrong. No found package %v on branch %v", name, branch)
 	return
 }
 
@@ -85,7 +85,7 @@ func GetPacksListByName(url, template, branch string) (packlist []model.PackInfo
 	if statusCode == 429 {
 		log.Printf("Can't get response: Too Many Requests. Sleep and try again.")
 		time.Sleep(time.Second * 10)
-		row, statusCode, err = req.Get()
+		row, _, err = req.Get()
 	}
 	if err != nil {
 		return
@@ -94,18 +94,18 @@ func GetPacksListByName(url, template, branch string) (packlist []model.PackInfo
 	var resp PackListByName
 	err = json.Unmarshal(row, &resp)
 	if err != nil {
-		err = fmt.Errorf("Unmarshal response is failed. Error: %w\n", err)
+		err = fmt.Errorf("unmarshal response is failed. Error: %w", err)
 		return
 	}
 
 	if resp.Message != "" {
-		err = fmt.Errorf("No found packages by name-template %v on branch %v. Error message: %s\n", template, branch, resp.Message)
+		err = fmt.Errorf("no found packages by name-template %v on branch %v. Error message: %s", template, branch, resp.Message)
 		return
 	}
 
-	if resp.Packages != nil && len(resp.Packages) > 0 {
+	if len(resp.Packages) > 0 {
 		sort.Slice(resp.Packages, func(i, j int) bool { return resp.Packages[i].Name > resp.Packages[j].Name })
-		log.Printf("Sort result packages by template: %v", resp.Packages)
+		log.Printf("Sort result packages by template: %+v", resp.Packages)
 
 		regexpr := fmt.Sprintf("^%s.+", template)
 		packlist = make([]model.PackInfoByName, 0, 3)
@@ -115,17 +115,17 @@ func GetPacksListByName(url, template, branch string) (packlist []model.PackInfo
 			if regerr != nil {
 				log.Printf("Can't regexp-parse package name %s by expression %s\n", pack.Name, regexpr)
 			}
-			if matched && !pack.ByBinary {
+			if matched && !pack.ByBinary && !pack.Versions[0].Deleted {
 				packlist = append(packlist, pack)
 			}
 			if len(packlist) >= 3 {
-				log.Printf("Resulting packages list finding by name-template %s: %v\n", template, packlist)
+				log.Printf("Resulting packages list finding by name-template %s: %+v\n", template, packlist)
 				return
 			}
 		}
 	}
 
-	err = fmt.Errorf("No found packages by name-template %v on branch %v\n", template, branch)
+	err = fmt.Errorf("no found packages by name-template %v on branch %v", template, branch)
 	return
 }
 
@@ -143,7 +143,7 @@ func GetPackInfo(url, name, branch string) (packinfo model.SiteVersion, err erro
 	if statusCode == 429 {
 		log.Printf("Can't get response: Too Many Requests. Sleep and try again.")
 		time.Sleep(time.Second * 10)
-		row, statusCode, err = req.Get()
+		row, _, err = req.Get()
 	}
 	if err != nil {
 		return
@@ -152,16 +152,16 @@ func GetPackInfo(url, name, branch string) (packinfo model.SiteVersion, err erro
 	var resp PackInfo
 	err = json.Unmarshal(row, &resp)
 	if err != nil {
-		err = fmt.Errorf("Unmarshal response is failed. Error: %w\n", err)
+		err = fmt.Errorf("unmarshal response is failed. Error: %w", err)
 		return
 	}
 
 	if resp.Message != "" {
-		err = fmt.Errorf("No found package %v on branch %v. Error message: %s\n", name, branch, resp.Message)
+		err = fmt.Errorf("no found package %v on branch %v. Error message: %s", name, branch, resp.Message)
 		return
 	}
 
-	if resp.Versions != nil && len(resp.Versions) > 0 {
+	if len(resp.Versions) > 0 {
 		for _, ver := range resp.Versions {
 			if ver.Branch == branch {
 				packinfo = ver
@@ -170,6 +170,6 @@ func GetPackInfo(url, name, branch string) (packinfo model.SiteVersion, err erro
 		}
 	}
 
-	err = fmt.Errorf("No found package %v on branch %v\n", name, branch)
+	err = fmt.Errorf("no found package %v on branch %v", name, branch)
 	return
 }

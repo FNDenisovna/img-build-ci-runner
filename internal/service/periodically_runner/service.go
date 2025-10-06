@@ -11,13 +11,19 @@ import (
 )
 
 type Service struct {
-	cfg *config.Config
+	cfg  *config.Config
+	mail Mail
 }
 
-func New(c *config.Config) *Service {
+func New(c *config.Config, mail Mail) *Service {
 	return &Service{
-		cfg: c,
+		cfg:  c,
+		mail: mail,
 	}
+}
+
+type Mail interface {
+	SendMessage(text string) error
 }
 
 func (s *Service) Run(simulate bool, closing chan bool) error {
@@ -49,9 +55,21 @@ func (s *Service) Run(simulate bool, closing chan bool) error {
 					},
 					Ref: fmt.Sprintf("refs/heads/%s", wfRefRepo),
 				}
-				wf_runner.RunBuildImage(data, wfUrl, wfName, wfOrgRepo, wfToken)
+				if !simulate {
+					err := wf_runner.RunBuildImage(data, wfUrl, wfName, wfOrgRepo, wfToken)
 
-				time.Sleep(time.Minute * 90)
+					if err != nil {
+						log.Printf("Can't running workflow. \nInputs: %+v \nWF url: %s, WF name: %s, WF org repo: %s \nError: %v\n", data.Inputs, wfUrl, wfName, wfOrgRepo, err)
+						return err
+					}
+
+					//generate message
+					err = s.mail.SendMessage(fmt.Sprintf("Workflow was running successful. \nInputs: %+v \nWorkflow url: %s/%s \nWorkflow name: %s", data.Inputs, wfUrl, wfOrgRepo, wfName))
+					if err != nil {
+						log.Printf("Mail sending is failed. Error: %v", err)
+					}
+					time.Sleep(time.Minute * 90)
+				}
 			}
 		}
 	}
