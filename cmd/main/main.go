@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	config "img-build-ci-runner/internal/config/viper"
+	mail "img-build-ci-runner/internal/mail/telegram"
 	renderpython "img-build-ci-runner/internal/render_python"
 	"img-build-ci-runner/internal/resources"
 	period_service "img-build-ci-runner/internal/service/periodically_runner"
@@ -41,13 +42,17 @@ func main() {
 	log.Println("Start working")
 	cfg := config.New()
 
-	versCronExp := cfg.GetString("vers_cronexp")
+	versCronExp := cfg.GetString(config.VersCronexp)
 	if versCronExp == "" {
-		log.Panic("vers_cronexp is not set in config")
+		log.Panicf("%s is not set in config", config.VersCronexp)
 	}
 
-	periodCronExp := cfg.GetString("period_cron_omg_group")
-	storagePath := cfg.GetString("storage_path")
+	periodCronExp := cfg.GetString(config.PeriodCronexp)
+	if periodCronExp == "" {
+		log.Panicf("%s is not set in config", config.PeriodCronexp)
+	}
+
+	storagePath := cfg.GetString(config.StoragePath)
 
 	dbDriver, err := sql.New(storagePath)
 	if err != nil {
@@ -62,8 +67,10 @@ func main() {
 
 	renderpython.CreateScriptFile(storagePath)
 
-	versSrv := vers_service.New(db, cfg)
-	periodSrv := period_service.New(cfg)
+	mail := mail.New(config.TelegramBotToken, config.TelegramChannelId)
+
+	versSrv := vers_service.New(db, cfg, mail)
+	periodSrv := period_service.New(cfg, mail)
 
 	exit_chan := make(chan os.Signal, 1)
 	signal.Notify(exit_chan, os.Interrupt, syscall.SIGTERM)
@@ -117,7 +124,7 @@ func main() {
 		wg.Add(1)
 		defer wg.Done()
 
-		if err = versSrv.Run(true, false, closing); err != nil {
+		if err = versSrv.Run(false, false, closing); err != nil {
 			errChan <- err
 		}
 	})
@@ -131,7 +138,7 @@ func main() {
 		wg.Add(1)
 		defer wg.Done()
 
-		if err = periodSrv.Run(true, closing); err != nil {
+		if err = periodSrv.Run(false, closing); err != nil {
 			errChan <- err
 		}
 	})

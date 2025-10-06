@@ -69,6 +69,7 @@ func (g *GitGetter) GetImgPkgMap() map[string][]string {
 	log.Printf("Start reading mapping images-packes from repo %s...\n", g.GitUrl)
 	imgGroupList := strings.Split(g.ImgGroup, " ")
 	for _, orgd := range *orgdirs {
+		log.Printf("Start reading mapping images-packes for group %s", orgd.Name())
 		if !slices.Contains(imgGroupList, orgd.Name()) {
 			continue
 		}
@@ -80,28 +81,29 @@ func (g *GitGetter) GetImgPkgMap() map[string][]string {
 		}
 
 		for _, img := range imgs {
+			log.Printf("Start reading mapping image info: %s", img.Name())
 			filepath := fmt.Sprintf("org/%s/%s/info.yaml", orgd.Name(), img.Name())
 			if _, err := g.virtfs.Lstat(filepath); err != nil {
-				//log.Printf("File %s is not exist. Error: %v", filepath, err)
+				log.Printf("File %s is not exist. Error: %v", filepath, err)
 				continue
 			}
 
 			file, err := g.virtfs.Open(filepath)
 			if err != nil {
-				//log.Printf("Can't open file %s. Error: %v", filepath, err)
+				log.Printf("Can't open file %s. Error: %v", filepath, err)
 				continue
 			}
 
 			infodata, err := io.ReadAll(file)
 			if err != nil {
-				//log.Printf("Can't read info.yaml file. Error: %v\n", err)
+				log.Printf("Can't read info.yaml file. Error: %v\n", err)
 				continue
 			}
 
 			var iy InfoYaml
 			err = yaml.Unmarshal(infodata, &iy)
 			if err != nil {
-				//log.Printf("Can't read info.yaml file. Error: %v\n", err)
+				log.Printf("Can't unmarshal info.yaml file. Error: %v\n", err)
 				continue
 			}
 
@@ -118,11 +120,19 @@ func (g *GitGetter) GetImgPkgMap() map[string][]string {
 
 func (g *GitGetter) getImgGroups() (*[]fs.FileInfo, error) {
 	//"https://gitea.basealt.ru/alt/image-forge"
-	_, err := git.Clone(memory.NewStorage(), g.virtfs, &git.CloneOptions{
-		URL: g.GitUrl,
-		//Progress:      os.Stdout,
-		ReferenceName: plumbing.NewBranchReferenceName("master"),
-	})
+	var err error
+	for range 3 {
+		_, err = git.Clone(memory.NewStorage(), g.virtfs, &git.CloneOptions{
+			URL: g.GitUrl,
+			//Progress:      os.Stdout,
+			ReferenceName: plumbing.NewBranchReferenceName("master"),
+		})
+		if err != nil {
+			continue
+		} else {
+			break
+		}
+	}
 
 	if err != nil {
 		log.Fatalf("Can't read git repo with images and inside it packages info. Giturl: %s. Error: %v\n", g.GitUrl, err)

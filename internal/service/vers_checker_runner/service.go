@@ -17,8 +17,9 @@ import (
 )
 
 type Service struct {
-	cfg *config.Config
-	db  Db
+	cfg  *config.Config
+	db   Db
+	mail Mail
 }
 
 type ImgInfoGetter interface {
@@ -34,10 +35,15 @@ type WfApi interface {
 	RunBuildImage(inputData *model.WfInputDataImages) error
 }
 
-func New(db Db, c *config.Config) *Service {
+type Mail interface {
+	SendMessage(text string) error
+}
+
+func New(db Db, c *config.Config, mail Mail) *Service {
 	return &Service{
-		cfg: c,
-		db:  db,
+		cfg:  c,
+		db:   db,
+		mail: mail,
 	}
 }
 
@@ -59,9 +65,10 @@ func (s *Service) Run(simulateWf, simulateDb bool, closing chan bool) error {
 	//key - image, value - list of packs
 	for ig, g := range imgGroups {
 		checklist := s.GetImgPkgMap(g)
-
+		log.Printf("Start image group: %s", g)
 		//foreach branch check
 		for ib, b := range branches {
+			log.Printf("Start branch: %s", b)
 			select {
 			case <-closing:
 				log.Println("Finish packages version checker worker by closing chanell singal")
@@ -85,19 +92,28 @@ func (s *Service) Run(simulateWf, simulateDb bool, closing chan bool) error {
 
 				//foreach image get current version pack from site
 				for im, packs := range checklist {
+					log.Printf("Start image: %s", im)
+					log.Printf("Packages: %v", packs)
+
 					mainPack := packs[0]
 
 					packsListByName := make([]model.PackInfoByName, 0, len(packs))
 
-					templated := renderpython.CheckTemplate(mainPack)
+					templated, versioned := renderpython.CheckTemplate(mainPack)
 					if templated {
 						//get package name where istead version is ""
 						mainPack = renderpython.RenderPackageName(mainPack, b, "")
-						//find all packages where is mainPame result
-						packsListByName, err = alt_api.GetPacksListByName(altApiUrl, mainPack, b)
-						if err != nil {
-							log.Printf("Can't get package list by name-template, skip it. Error: %v\n", err)
-							continue
+						if !versioned {
+							packsListByName = append(packsListByName, model.PackInfoByName{
+								Name: mainPack,
+							})
+						} else {
+							//find all packages where is mainPack result
+							packsListByName, err = alt_api.GetPacksListByName(altApiUrl, mainPack, b)
+							if err != nil {
+								log.Printf("Can't get package list by name-template, skip it. Error: %v\n", err)
+								continue
+							}
 						}
 					} else {
 						packsListByName = append(packsListByName, model.PackInfoByName{
@@ -162,14 +178,17 @@ func (s *Service) Run(simulateWf, simulateDb bool, closing chan bool) error {
 
 				//foreach branch run building workflow
 				if !simulateWf {
-					//generate message to email
-					//TODO
-
 					err = wf_runner.RunBuildImage(data, wfUrl, wfName, wfOrgRepo, wfToken)
 					if err != nil {
-						log.Printf("Can't running workflow, skip inserting to db. WF url: %s, WF name: %s, WF org repo: %s, Error: %v\n", wfUrl, wfName, wfOrgRepo, err)
+						log.Printf("Can't running workflow, skip inserting to db. \nInputs: %s \nWF url: %s, WF name: %s, WF org repo: %s \nError: %v\n", data.Inputs.ImagesStr, wfUrl, wfName, wfOrgRepo, err)
 					} else {
 						successWf = true
+
+						//generate message
+						err = s.mail.SendMessage(fmt.Sprintf("Workflow was running successful. \nInputs: %s \nWorkflow url: %s/%s \nWorkflow name: %s", data.Inputs.ImagesStr, wfUrl, wfOrgRepo, wfName))
+						if err != nil {
+							log.Printf("Mail sending is failed. Error: %v", err)
+						}
 					}
 				}
 
@@ -180,7 +199,7 @@ func (s *Service) Run(simulateWf, simulateDb bool, closing chan bool) error {
 					}
 				}
 
-				if ib >= len(branches)-1 {
+				if ib >= len(branches)-1 || simulateWf {
 					continue
 				} else {
 					//Add witing for finish of previos WF
@@ -189,7 +208,7 @@ func (s *Service) Run(simulateWf, simulateDb bool, closing chan bool) error {
 			}
 
 			// time delay between running workflow and new
-			if ig >= len(imgGroups)-1 {
+			if ig >= len(imgGroups)-1 || simulateWf {
 				continue
 			} else {
 				//Add witing for finish of previos WF

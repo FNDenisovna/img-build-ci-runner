@@ -49,8 +49,10 @@ func CreateScriptFile(_path string) (err error) {
 	return
 }
 
-func CheckTemplate(packageName string) bool {
-	return strings.ContainsAny(packageName, "{%}")
+func CheckTemplate(packageName string) (templated, versioned bool) {
+	templated = strings.ContainsAny(packageName, "{%}")
+	versioned = strings.Contains(packageName, "{{ version }}")
+	return
 }
 
 // Try render python template with package name
