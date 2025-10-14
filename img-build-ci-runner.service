@@ -1,0 +1,19 @@
+#/usr/lib/systemd/system 
+
+[Unit]
+Description=Image CI runner daemon
+Documentation=https://github.com/FNDenisovna/img-build-ci-runner
+After=network.target
+
+[Service]
+Type=simple
+User=runner
+Group=runner
+WorkingDirectory=/home/runner/img-build-ci-runner
+ExecStart=go run /home/runner/img-build-ci-runner/cmd/main/main.go
+Restart=on-failure
+TimeoutSec=30
+RestartSec=60
+
+[Install]
+WantedBy=default.target

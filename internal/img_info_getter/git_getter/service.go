@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"log"
 
@@ -62,6 +63,7 @@ func (g *GitGetter) GetImgPkgMap() map[string][]string {
 
 	orgdirs, err := g.getImgGroups()
 	if err != nil {
+		log.Printf("Can't get org dirs, will try next time. Error: %v", err)
 		return nil
 	}
 	//log.Printf("Got groups from git repo: %v\n", orgdirs)
@@ -121,13 +123,16 @@ func (g *GitGetter) GetImgPkgMap() map[string][]string {
 func (g *GitGetter) getImgGroups() (*[]fs.FileInfo, error) {
 	//"https://gitea.basealt.ru/alt/image-forge"
 	var err error
-	for range 3 {
+	for range 4 {
 		_, err = git.Clone(memory.NewStorage(), g.virtfs, &git.CloneOptions{
 			URL: g.GitUrl,
 			//Progress:      os.Stdout,
 			ReferenceName: plumbing.NewBranchReferenceName("master"),
 		})
 		if err != nil {
+			log.Printf("Error: %v", err)
+			log.Printf("Reading git is failed, trying again")
+			time.Sleep(time.Second)
 			continue
 		} else {
 			break
@@ -135,7 +140,7 @@ func (g *GitGetter) getImgGroups() (*[]fs.FileInfo, error) {
 	}
 
 	if err != nil {
-		log.Fatalf("Can't read git repo with images and inside it packages info. Giturl: %s. Error: %v\n", g.GitUrl, err)
+		log.Printf("Can't read git repo with images and inside it packages info. Giturl: %s. Error: %v\n", g.GitUrl, err)
 		return nil, err
 		//panic(err)
 	}
@@ -144,7 +149,7 @@ func (g *GitGetter) getImgGroups() (*[]fs.FileInfo, error) {
 	var orgdirs []fs.FileInfo
 	orgdirs, err = g.virtfs.ReadDir("org")
 	if err != nil {
-		log.Fatalf("Can't read org dirs. Error: %v\n", err)
+		log.Printf("Can't read org dirs. Error: %v\n", err)
 		return nil, err
 		//panic(err)
 	}
