@@ -167,43 +167,47 @@ func (s *Service) Run(simulateWf, simulateDb bool, closing chan bool) error {
 					}
 				}
 
-				imagesBytes, err := json.Marshal(data.Inputs.Images)
-				if err != nil {
-					log.Printf("Can't marshal data.Inputs.Images to string. Error: %v\n", err)
-					continue
-				}
+				if len(data.Inputs.Images) > 0 {
 
-				data.Inputs.ImagesStr = string(imagesBytes)
-				var successWf bool
-
-				//foreach branch run building workflow
-				if !simulateWf {
-					err = wf_runner.RunBuildImage(data, wfUrl, wfName, wfOrgRepo, wfToken)
+					imagesBytes, err := json.Marshal(data.Inputs.Images)
 					if err != nil {
-						log.Printf("Can't running workflow, skip inserting to db. \nInputs: %s \nWF url: %s, WF name: %s, WF org repo: %s \nError: %v\n", data.Inputs.ImagesStr, wfUrl, wfName, wfOrgRepo, err)
-					} else {
-						successWf = true
+						log.Printf("Can't marshal data.Inputs.Images to string. Error: %v\n", err)
+						continue
+					}
 
-						//generate message
-						err = s.mail.SendMessage(fmt.Sprintf("Workflow was running successful. \nInputs: %s \nWorkflow url: %s/%s \nWorkflow name: %s", data.Inputs.ImagesStr, wfUrl, wfOrgRepo, wfName))
+					data.Inputs.ImagesStr = string(imagesBytes)
+					var successWf bool
+
+					//foreach branch run building workflow
+					if !simulateWf {
+						err = wf_runner.RunBuildImage(data, wfUrl, wfName, wfOrgRepo, wfToken)
 						if err != nil {
-							log.Printf("Mail sending is failed. Error: %v", err)
+							log.Printf("Can't running workflow, skip inserting to db. \nInputs: %s \nWF url: %s, WF name: %s, WF org repo: %s \nError: %v\n", data.Inputs.ImagesStr, wfUrl, wfName, wfOrgRepo, err)
+						} else {
+							successWf = true
+
+							//generate message
+							err = s.mail.SendMessage(fmt.Sprintf("Workflow was running successful. \nInputs: %s \nWorkflow url: %s/%s \nWorkflow name: %s", data.Inputs.ImagesStr, wfUrl, wfOrgRepo, wfName))
+							if err != nil {
+								log.Printf("Mail sending is failed. Error: %v", err)
+							}
 						}
 					}
-				}
 
-				if !simulateDb && successWf || !simulateDb && simulateWf {
-					for _, dbInfo := range toDbInsert {
-						s.db.InsertPackage(&dbInfo)
-						log.Printf("Insert to db: %+v\n", dbInfo)
+					if !simulateDb && successWf || !simulateDb && simulateWf {
+						for _, dbInfo := range toDbInsert {
+							s.db.InsertPackage(&dbInfo)
+							log.Printf("Insert to db: %+v\n", dbInfo)
+						}
 					}
-				}
 
-				if ib >= len(branches)-1 || simulateWf {
-					continue
-				} else {
-					//Add witing for finish of previos WF
-					time.Sleep(time.Minute * 40)
+					if ib >= len(branches)-1 || simulateWf {
+						continue
+					} else {
+						//Add witing for finish of previos WF
+						time.Sleep(time.Minute * 40)
+					}
+
 				}
 			}
 
