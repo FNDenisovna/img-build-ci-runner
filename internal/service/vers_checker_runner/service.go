@@ -125,16 +125,11 @@ func (s *Service) Run(simulateWf, simulateDb bool, closing chan bool) error {
 
 						dbInfo, checked := packsDbMap[pack.Name]
 
-						curPackInfo, err := alt_api.GetTaskPackInfo(altApiUrl, pack.Name, b)
+						log.Printf("Search package info by basealt site endpoint 'site/find_packages'\n")
+						curPackInfo, err := alt_api.GetPackInfo(altApiUrl, pack.Name, b)
 						if err != nil {
-							log.Printf("Can't get package info from basealt site tasks info. Package: %s, Branch: %s, Error: %v\n", mainPack, b, err)
-							log.Printf("Try again from basealt site total package info\n")
-
-							curPackInfo, err = alt_api.GetPackInfo(altApiUrl, pack.Name, b)
-							if err != nil {
-								log.Printf("Can't get package info from basealt site. Package: %s, Branch: %s, Error: %v\n", mainPack, b, err)
-								continue
-							}
+							log.Printf("Can't get package info from basealt site. Package: %s, Branch: %s, Error: %v\n", mainPack, b, err)
+							continue
 						}
 
 						// packege exists in db
